@@ -1,0 +1,6 @@
+{
+  "name": "CatatCuan",
+  "description": "Kelola dompet, transfer dengan biaya admin, dan catat keuangan cerdas mulai dari nol secara praktis dan ringan.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
