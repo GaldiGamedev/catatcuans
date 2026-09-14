@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Home, Target, PieChart, Sparkles } from 'lucide-react';
+import { Home, Target, PieChart, Sparkles, HandCoins } from 'lucide-react';
 import { Header } from './components/Header';
 import { OverviewCards } from './components/OverviewCards';
 import { WalletsSection } from './components/WalletsSection';
@@ -13,6 +13,8 @@ import { SettingsModal } from './components/SettingsModal';
 import { BudgetSection } from './components/BudgetSection';
 import { SavingsSection } from './components/SavingsSection';
 import { QuickSpendsBar } from './components/QuickSpendsBar';
+import { DebtSection } from './components/DebtSection';
+import { PinLockModal } from './components/PinLockModal';
 import {
   Wallet,
   Transaction,
@@ -22,6 +24,7 @@ import {
   Budget,
   SavingsGoal,
   QuickSpend,
+  DebtRecord,
 } from './types';
 import {
   getStoredWallets,
@@ -38,6 +41,8 @@ import {
   saveStoredSavings,
   getStoredQuickSpends,
   saveStoredQuickSpends,
+  getStoredDebts,
+  saveStoredDebts,
   calculateWalletBalances,
   DEFAULT_CATEGORIES,
   DEFAULT_WALLETS,
@@ -55,10 +60,17 @@ export default function App() {
   const [budgets, setBudgets] = useState<Budget[]>(() => getStoredBudgets());
   const [savings, setSavings] = useState<SavingsGoal[]>(() => getStoredSavings());
   const [quickSpends, setQuickSpends] = useState<QuickSpend[]>(() => getStoredQuickSpends());
+  const [debts, setDebts] = useState<DebtRecord[]>(() => getStoredDebts());
+
+  // Security Lock
+  const [isUnlocked, setIsUnlocked] = useState<boolean>(() => {
+    const s = getStoredSettings();
+    return !s.pinLockEnabled;
+  });
 
   // Navigation & Filtering
   const [selectedWalletId, setSelectedWalletId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'home' | 'budget' | 'analytics'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'budget' | 'debt' | 'analytics'>('home');
 
   // Modals state
   const [isTxModalOpen, setIsTxModalOpen] = useState(false);
@@ -100,6 +112,10 @@ export default function App() {
   useEffect(() => {
     saveStoredQuickSpends(quickSpends);
   }, [quickSpends]);
+
+  useEffect(() => {
+    saveStoredDebts(debts);
+  }, [debts]);
 
   // Compute real-time balances for all wallets
   const wallets = useMemo(() => {
@@ -278,6 +294,90 @@ export default function App() {
         createdAt: Date.now(),
       };
       setTransactions((prev) => [newTx, ...prev]);
+    }
+  };
+
+  // Debt & Loan Actions
+  const handleSaveDebt = (newDebt: DebtRecord) => {
+    setDebts((prev) => [newDebt, ...prev]);
+
+    // If a wallet is specified, create corresponding initial cash movement:
+    // Receivable (kita pinjamkan uang keluar) -> Expense
+    // Debt (kita pinjam uang masuk) -> Income
+    if (newDebt.walletId) {
+      const isReceivable = newDebt.type === 'receivable';
+      const tx: Transaction = {
+        id: 'tx-debt-' + Date.now(),
+        type: isReceivable ? 'expense' : 'income',
+        amount: newDebt.totalAmount,
+        date: getTodayDateString(),
+        category: isReceivable ? 'Pinjaman / Piutang' : 'Utang / Pinjaman',
+        walletId: newDebt.walletId,
+        note: `${isReceivable ? 'Piutang' : 'Utang'}: ${newDebt.personName} (${newDebt.note || 'Tercatat'})`,
+        createdAt: Date.now(),
+      };
+      setTransactions((prev) => [tx, ...prev]);
+    }
+
+    if (settings.soundEnabled) {
+      soundFx.playCashRegister();
+    }
+  };
+
+  const handleDeleteDebt = (debtId: string) => {
+    setDebts((prev) => prev.filter((d) => d.id !== debtId));
+  };
+
+  const handlePayDebt = (debtId: string, amount: number, walletId: string, note?: string) => {
+    setDebts((prev) =>
+      prev.map((d) => {
+        if (d.id === debtId) {
+          const newPaid = d.paidAmount + amount;
+          const isLunas = newPaid >= d.totalAmount;
+          return {
+            ...d,
+            paidAmount: newPaid,
+            status: isLunas ? 'paid' : 'partial',
+            payments: [
+              ...d.payments,
+              {
+                id: 'pay-' + Date.now(),
+                amount,
+                date: getTodayDateString(),
+                walletId,
+                note,
+                createdAt: Date.now(),
+              },
+            ],
+          };
+        }
+        return d;
+      })
+    );
+
+    // Record cash transaction:
+    // When paying our debt -> Expense from our wallet
+    // When receiving payment for our receivable -> Income to our wallet
+    const targetDebt = debts.find((d) => d.id === debtId);
+    if (targetDebt) {
+      const isReceivable = targetDebt.type === 'receivable';
+      const tx: Transaction = {
+        id: 'tx-pay-debt-' + Date.now(),
+        type: isReceivable ? 'income' : 'expense',
+        amount,
+        date: getTodayDateString(),
+        category: isReceivable ? 'Pelunasan Piutang' : 'Pelunasan Utang',
+        walletId,
+        note: `Cicilan/Pelunasan ${isReceivable ? 'piutang dari' : 'utang ke'} ${targetDebt.personName}${
+          note ? ` (${note})` : ''
+        }`,
+        createdAt: Date.now(),
+      };
+      setTransactions((prev) => [tx, ...prev]);
+    }
+
+    if (settings.soundEnabled) {
+      soundFx.playCashRegister();
     }
   };
 
@@ -460,12 +560,15 @@ export default function App() {
         wallets={wallets}
         transactions={transactions}
         categories={categories}
+        debts={debts}
         settings={settings}
+        onTogglePrivacy={() => setSettings((s) => ({ ...s, privacyMode: !s.privacyMode }))}
         onResetData={handleResetData}
         currentTab={activeTab}
         onChangeTab={setActiveTab}
         budgetsCount={budgets.length}
         savingsCount={savings.length}
+        debtsCount={debts.length}
       />
 
       {/* Main Content Area */}
@@ -506,6 +609,24 @@ export default function App() {
 
             <button
               type="button"
+              onClick={() => setActiveTab('debt')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all ${
+                activeTab === 'debt'
+                  ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md shadow-emerald-950'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              }`}
+            >
+              <HandCoins className="w-4 h-4" />
+              <span>Utang-Piutang</span>
+              {debts.length > 0 && (
+                <span className="text-[11px] px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 font-bold border border-rose-500/30">
+                  {debts.length}
+                </span>
+              )}
+            </button>
+
+            <button
+              type="button"
               onClick={() => setActiveTab('analytics')}
               className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all ${
                 activeTab === 'analytics'
@@ -522,6 +643,12 @@ export default function App() {
             <span>{wallets.length} Dompet Aktif</span>
             <span>•</span>
             <span>{transactions.length} Transaksi Tercatat</span>
+            {debts.length > 0 && (
+              <>
+                <span>•</span>
+                <span>{debts.length} Catatan Utang</span>
+              </>
+            )}
           </div>
         </div>
 
@@ -636,7 +763,20 @@ export default function App() {
           </div>
         )}
 
-        {/* Tab 3: Dedicated Full Analytics Page */}
+        {/* Tab 3: Dedicated Utang-Piutang (Debt / Loan Tracker) */}
+        {activeTab === 'debt' && (
+          <div className="space-y-6 animate-in fade-in duration-200">
+            <DebtSection
+              debts={debts}
+              wallets={wallets}
+              onSaveDebt={handleSaveDebt}
+              onDeleteDebt={handleDeleteDebt}
+              onPayDebt={handlePayDebt}
+            />
+          </div>
+        )}
+
+        {/* Tab 4: Dedicated Full Analytics Page */}
         {activeTab === 'analytics' && (
           <div className="space-y-6 animate-in fade-in duration-200">
             <AnalyticsSection transactions={transactions} />
@@ -650,7 +790,18 @@ export default function App() {
         onChangeTab={setActiveTab}
         onOpenTransactionModal={() => handleOpenNewTransaction('expense')}
         onOpenSettings={() => setIsSettingsOpen(true)}
+        debtsCount={debts.length}
       />
+
+      {/* PIN Lock Security Screen Modal */}
+      {settings.pinLockEnabled && !isUnlocked && (
+        <PinLockModal
+          correctPin={settings.pinCode || '1234'}
+          onSuccess={() => setIsUnlocked(true)}
+          userName={settings.userName}
+          userAvatar={settings.userAvatar}
+        />
+      )}
 
       {/* Modals */}
       <TransactionModal
@@ -700,7 +851,9 @@ export default function App() {
         categories={categories}
         budgets={budgets}
         savings={savings}
+        debts={debts}
         onResetData={handleResetData}
+        onRestoreDebts={(restoredDebts) => setDebts(restoredDebts)}
         onLoadDemoData={handleLoadDemoData}
         onOpenCategoryModal={() => {
           setIsSettingsOpen(false);

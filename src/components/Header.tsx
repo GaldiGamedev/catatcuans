@@ -11,9 +11,12 @@ import {
   Home,
   Target,
   PieChart,
+  HandCoins,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { showConfirmDialog, showToast, showSuccessAlert, showErrorAlert } from '../utils/sweetalert';
-import { Transaction, Wallet, Category, AppSettings } from '../types';
+import { Transaction, Wallet, Category, AppSettings, DebtRecord } from '../types';
 import { DEFAULT_CATEGORIES, DEFAULT_TRANSACTIONS, DEFAULT_WALLETS } from '../utils/storage';
 
 interface HeaderProps {
@@ -24,12 +27,15 @@ interface HeaderProps {
   wallets: Wallet[];
   transactions: Transaction[];
   categories: Category[];
+  debts?: DebtRecord[];
   settings?: AppSettings;
+  onTogglePrivacy?: () => void;
   onResetData: (w: Wallet[], t: Transaction[], c: Category[]) => void;
-  currentTab?: 'home' | 'budget' | 'analytics';
-  onChangeTab?: (tab: 'home' | 'budget' | 'analytics') => void;
+  currentTab?: 'home' | 'budget' | 'debt' | 'analytics';
+  onChangeTab?: (tab: 'home' | 'budget' | 'debt' | 'analytics') => void;
   budgetsCount?: number;
   savingsCount?: number;
+  debtsCount?: number;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -40,12 +46,15 @@ export const Header: React.FC<HeaderProps> = ({
   wallets,
   transactions,
   categories,
+  debts = [],
   settings,
+  onTogglePrivacy,
   onResetData,
   currentTab = 'home',
   onChangeTab,
   budgetsCount = 0,
   savingsCount = 0,
+  debtsCount = 0,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -59,6 +68,7 @@ export const Header: React.FC<HeaderProps> = ({
         wallets,
         transactions,
         categories,
+        debts,
       };
 
       const jsonStr = JSON.stringify(dataToExport, null, 2);
@@ -201,6 +211,24 @@ export const Header: React.FC<HeaderProps> = ({
 
             <button
               type="button"
+              onClick={() => onChangeTab('debt')}
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                currentTab === 'debt'
+                  ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md shadow-emerald-950'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              }`}
+            >
+              <HandCoins className="w-3.5 h-3.5" />
+              <span>Utang-Piutang</span>
+              {debtsCount > 0 && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-rose-500/20 text-rose-300 font-bold border border-rose-500/30">
+                  {debtsCount}
+                </span>
+              )}
+            </button>
+
+            <button
+              type="button"
               onClick={() => onChangeTab('analytics')}
               className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all ${
                 currentTab === 'analytics'
@@ -216,6 +244,22 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Action Buttons */}
         <div className="flex items-center gap-2">
+          {/* Privacy Eye Toggle */}
+          {onTogglePrivacy && (
+            <button
+              type="button"
+              onClick={onTogglePrivacy}
+              title={settings?.privacyMode ? 'Tampilkan Angka Saldo' : 'Sembunyikan Nominal Saldo (Mode Privasi)'}
+              className={`p-2 rounded-xl transition-all ${
+                settings?.privacyMode
+                  ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
+                  : 'bg-slate-800/80 text-slate-300 hover:text-white border border-slate-700'
+              }`}
+            >
+              {settings?.privacyMode ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
+          )}
+
           {/* Hidden File Input for JSON import */}
           <input
             ref={fileInputRef}

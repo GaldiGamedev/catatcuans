@@ -75,11 +75,39 @@ export interface AppSettings {
   startOfWeek: 'monday' | 'sunday';
   budgetWarningThreshold: number; // e.g. 80 (%)
   defaultAdminFee: number;
-  privacyMode: boolean;
+  privacyMode: boolean; // Sembunyikan nominal saldo
+  pinLockEnabled: boolean; // Kunci PIN saat buka web
+  pinCode?: string; // 4-6 digit PIN
   compactMode: boolean;
   lowPowerMode: boolean;
   accentColor: 'emerald' | 'blue' | 'purple' | 'amber' | 'rose';
   soundEnabled: boolean;
   dailyReminderEnabled: boolean;
   dailyReminderTime: string;
+}
+
+export type DebtType = 'debt' | 'receivable'; // 'debt' (kita berutang ke orang) | 'receivable' (orang berutang ke kita / piutang)
+
+export interface DebtPayment {
+  id: string;
+  amount: number;
+  date: string;
+  walletId: string;
+  note?: string;
+  createdAt: number;
+}
+
+export interface DebtRecord {
+  id: string;
+  type: DebtType;
+  personName: string;
+  phone?: string;
+  totalAmount: number;
+  paidAmount: number;
+  dueDate: string; // YYYY-MM-DD
+  status: 'unpaid' | 'partial' | 'paid';
+  walletId?: string; // Dompet terkait untuk pencatatan kas
+  note?: string;
+  createdAt: number;
+  payments: DebtPayment[];
 }

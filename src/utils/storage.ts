@@ -1,4 +1,4 @@
-import { Wallet, Transaction, Category, AppSettings, Budget, SavingsGoal, QuickSpend } from '../types';
+import { Wallet, Transaction, Category, AppSettings, Budget, SavingsGoal, QuickSpend, DebtRecord } from '../types';
 
 export const STORAGE_KEYS = {
   WALLETS: 'catatcuan_wallets_v1',
@@ -8,6 +8,7 @@ export const STORAGE_KEYS = {
   BUDGETS: 'catatcuan_budgets_v1',
   SAVINGS: 'catatcuan_savings_v1',
   QUICK_SPENDS: 'catatcuan_quick_spends_v1',
+  DEBTS: 'catatcuan_debts_v1',
 };
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -22,6 +23,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   budgetWarningThreshold: 80,
   defaultAdminFee: 0,
   privacyMode: false,
+  pinLockEnabled: false,
+  pinCode: '',
   compactMode: false,
   lowPowerMode: false,
   accentColor: 'emerald',
@@ -229,6 +232,26 @@ export function saveStoredQuickSpends(quickSpends: QuickSpend[]) {
     localStorage.setItem(STORAGE_KEYS.QUICK_SPENDS, JSON.stringify(quickSpends));
   } catch (e) {
     console.error('Failed to save quick spends', e);
+  }
+}
+
+export function getStoredDebts(): DebtRecord[] {
+  try {
+    const data = localStorage.getItem(STORAGE_KEYS.DEBTS);
+    if (data) {
+      return JSON.parse(data);
+    }
+  } catch (e) {
+    console.error('Failed to load debts', e);
+  }
+  return [];
+}
+
+export function saveStoredDebts(debts: DebtRecord[]) {
+  try {
+    localStorage.setItem(STORAGE_KEYS.DEBTS, JSON.stringify(debts));
+  } catch (e) {
+    console.error('Failed to save debts', e);
   }
 }
 

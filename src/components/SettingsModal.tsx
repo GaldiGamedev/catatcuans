@@ -22,8 +22,11 @@ import {
   Calendar,
   Layers,
   Tag,
+  Lock,
+  KeyRound,
+  ShieldCheck,
 } from 'lucide-react';
-import { AppSettings, Wallet, Transaction, Category, Budget, SavingsGoal } from '../types';
+import { AppSettings, Wallet, Transaction, Category, Budget, SavingsGoal, DebtRecord } from '../types';
 import { showToast, showConfirmDialog, showSuccessAlert, showErrorAlert } from '../utils/sweetalert';
 import { DEFAULT_CATEGORIES, DEFAULT_TRANSACTIONS, DEFAULT_WALLETS, DEFAULT_SETTINGS, exportToCSV } from '../utils/storage';
 
@@ -37,7 +40,9 @@ interface SettingsModalProps {
   categories: Category[];
   budgets: Budget[];
   savings: SavingsGoal[];
+  debts?: DebtRecord[];
   onResetData: (w: Wallet[], t: Transaction[], c: Category[]) => void;
+  onRestoreDebts?: (debts: DebtRecord[]) => void;
   onLoadDemoData?: () => void;
   onOpenCategoryModal?: () => void;
 }
@@ -63,7 +68,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   categories,
   budgets,
   savings,
+  debts = [],
   onResetData,
+  onRestoreDebts,
   onLoadDemoData,
   onOpenCategoryModal,
 }) => {
@@ -89,6 +96,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         categories,
         budgets,
         savings,
+        debts,
       };
 
       const jsonStr = JSON.stringify(dataToExport, null, 2);
@@ -140,7 +148,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
         const confirmed = await showConfirmDialog(
           'Pulihkan Cadangan?',
-          `Akan memulihkan ${parsed.wallets.length} dompet dan ${parsed.transactions.length} transaksi. Data saat ini akan diperbarui.`,
+          `Akan memulihkan ${parsed.wallets.length} dompet, ${parsed.transactions.length} transaksi${
+            parsed.debts ? `, dan ${parsed.debts.length} catatan utang-piutang` : ''
+          }. Data saat ini akan diperbarui.`,
           'Pulihkan Sekarang',
           true
         );
@@ -148,6 +158,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         if (confirmed) {
           if (parsed.settings) onUpdateSettings(parsed.settings);
           onResetData(parsed.wallets, parsed.transactions, parsed.categories || DEFAULT_CATEGORIES);
+          if (parsed.debts && onRestoreDebts) {
+            onRestoreDebts(parsed.debts);
+          }
           showSuccessAlert('Data Berhasil Dipulihkan', 'Semua catatan keuangan Anda telah sinkron kembali.');
           onClose();
         }
@@ -599,6 +612,72 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       }`}
                     />
                   </button>
+                </div>
+
+                {/* PIN Lock Security Toggle */}
+                <div className="pt-3 border-t border-slate-800/80 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-xl bg-slate-900 flex items-center justify-center text-emerald-400">
+                        <Lock className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                          <span>Kunci Keamanan PIN</span>
+                          {settings.pinLockEnabled && (
+                            <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/30">
+                              Aktif
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-slate-400">
+                          Meminta 4 digit PIN setiap kali aplikasi web dibuka
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!settings.pinLockEnabled && !settings.pinCode) {
+                          // Prompt user to set a pin code
+                          updateSetting('pinCode', '1234');
+                        }
+                        updateSetting('pinLockEnabled', !settings.pinLockEnabled);
+                      }}
+                      className={`w-11 h-6 rounded-full transition-colors relative ${
+                        settings.pinLockEnabled ? 'bg-emerald-500' : 'bg-slate-800'
+                      }`}
+                    >
+                      <div
+                        className={`w-4 h-4 rounded-full bg-white transition-transform absolute top-1 ${
+                          settings.pinLockEnabled ? 'left-6' : 'left-1'
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  {settings.pinLockEnabled && (
+                    <div className="p-3 bg-slate-900/90 rounded-xl border border-slate-800 flex items-center justify-between gap-3 animate-in fade-in">
+                      <div className="flex items-center gap-2">
+                        <KeyRound className="w-4 h-4 text-emerald-400" />
+                        <span className="text-xs text-slate-300 font-semibold">Kode PIN Saat Ini:</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="password"
+                          maxLength={6}
+                          placeholder="Contoh: 1234"
+                          value={settings.pinCode || ''}
+                          onChange={(e) => {
+                            const val = e.target.value.replace(/[^0-9]/g, '');
+                            updateSetting('pinCode', val);
+                          }}
+                          className="w-24 px-2.5 py-1 text-center font-mono text-xs font-bold text-white bg-slate-950 border border-slate-700 rounded-lg focus:outline-none focus:border-emerald-500"
+                        />
+                        <span className="text-[10px] text-slate-500">4-6 digit</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Low Power Mode Toggle (HP Kentang) */}
