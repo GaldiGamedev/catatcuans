@@ -35,24 +35,51 @@ export interface Category {
 
 export type DateFilter = 'all' | 'today' | 'this_week' | 'this_month';
 
-export interface AppSettings {
-  autoDetectNotification: boolean;
-  privacyMode: boolean; // Hide balances with stars (Rp ••••••)
-  lowPowerMode: boolean; // Ultra light mode for low-end phones
-  defaultWalletId?: string;
-  defaultAdminFee: number;
+export interface Budget {
+  id: string;
+  categoryId: string;
+  categoryName: string;
+  monthlyLimit: number;
+  icon?: string;
+  color?: string;
 }
 
-export interface ParsedNotification {
-  rawText: string;
-  type: TransactionType;
+export interface SavingsGoal {
+  id: string;
+  name: string;
+  targetAmount: number;
+  currentAmount: number;
+  targetDate?: string; // YYYY-MM-DD
+  icon: string;
+  color: string;
+  walletId?: string;
+}
+
+export interface QuickSpend {
+  id: string;
+  name: string;
   amount: number;
-  adminFee?: number;
-  suggestedWalletId?: string;
-  suggestedToWalletId?: string;
-  suggestedCategory: string;
-  note: string;
-  date: string;
-  confidence: 'high' | 'medium' | 'low';
+  category: string;
+  walletId?: string;
+  icon: string;
 }
 
+export interface AppSettings {
+  userName: string;
+  userAvatar: string;
+  userBio: string;
+  currencySymbol: string;
+  currencyPosition: 'prefix' | 'suffix';
+  thousandSeparator: '.' | ',';
+  salaryCycleDate: number; // e.g. 1 - 28
+  startOfWeek: 'monday' | 'sunday';
+  budgetWarningThreshold: number; // e.g. 80 (%)
+  defaultAdminFee: number;
+  privacyMode: boolean;
+  compactMode: boolean;
+  lowPowerMode: boolean;
+  accentColor: 'emerald' | 'blue' | 'purple' | 'amber' | 'rose';
+  soundEnabled: boolean;
+  dailyReminderEnabled: boolean;
+  dailyReminderTime: string;
+}

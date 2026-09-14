@@ -6,33 +6,46 @@ import {
   ArrowUpFromLine,
   RotateCcw,
   Sparkles,
-  Zap,
   Settings,
+  Tag,
+  Home,
+  Target,
+  PieChart,
 } from 'lucide-react';
 import { showConfirmDialog, showToast, showSuccessAlert, showErrorAlert } from '../utils/sweetalert';
-import { Transaction, Wallet, Category } from '../types';
+import { Transaction, Wallet, Category, AppSettings } from '../types';
 import { DEFAULT_CATEGORIES, DEFAULT_TRANSACTIONS, DEFAULT_WALLETS } from '../utils/storage';
 
 interface HeaderProps {
   onOpenTransactionModal: () => void;
   onOpenWalletModal: () => void;
-  onOpenAutoDetect: () => void;
+  onOpenCategoryModal: () => void;
   onOpenSettings: () => void;
   wallets: Wallet[];
   transactions: Transaction[];
   categories: Category[];
+  settings?: AppSettings;
   onResetData: (w: Wallet[], t: Transaction[], c: Category[]) => void;
+  currentTab?: 'home' | 'budget' | 'analytics';
+  onChangeTab?: (tab: 'home' | 'budget' | 'analytics') => void;
+  budgetsCount?: number;
+  savingsCount?: number;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   onOpenTransactionModal,
   onOpenWalletModal,
-  onOpenAutoDetect,
+  onOpenCategoryModal,
   onOpenSettings,
   wallets,
   transactions,
   categories,
+  settings,
   onResetData,
+  currentTab = 'home',
+  onChangeTab,
+  budgetsCount = 0,
+  savingsCount = 0,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -40,8 +53,9 @@ export const Header: React.FC<HeaderProps> = ({
     try {
       const dataToExport = {
         app: 'CatatCuan',
-        version: 1,
+        version: 3,
         exportedAt: new Date().toISOString(),
+        settings,
         wallets,
         transactions,
         categories,
@@ -81,7 +95,7 @@ export const Header: React.FC<HeaderProps> = ({
         const parsed = JSON.parse(content);
 
         if (!parsed.wallets || !parsed.transactions) {
-          showErrorAlert('Format Salah', 'File JSON tidak memiliki struktur data MuCuan yang valid.');
+          showErrorAlert('Format Salah', 'File JSON tidak memiliki struktur data CatatCuan yang valid.');
           return;
         }
 
@@ -112,7 +126,7 @@ export const Header: React.FC<HeaderProps> = ({
   const handleResetData = async () => {
     const confirmed = await showConfirmDialog(
       'Reset Data ke Bawaan?',
-      'Semua transaksi dan dompet buatan Anda akan dikembalikan ke data simulasi awal.',
+      'Semua transaksi dan dompet buatan Anda akan dikembalikan ke data awal.',
       'Ya, Reset Data',
       true
     );
@@ -129,8 +143,8 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Brand Logo & Name */}
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-gradient-to-tr from-emerald-600 via-teal-500 to-indigo-500 p-0.5 shadow-lg shadow-emerald-500/20 flex items-center justify-center">
-            <div className="w-full h-full bg-slate-950/80 rounded-[14px] flex items-center justify-center">
-              <WalletCards className="w-5 h-5 text-emerald-400" />
+            <div className="w-full h-full bg-slate-950/80 rounded-[14px] flex items-center justify-center text-lg">
+              {settings?.userAvatar || <WalletCards className="w-5 h-5 text-emerald-400" />}
             </div>
           </div>
           <div>
@@ -142,14 +156,63 @@ export const Header: React.FC<HeaderProps> = ({
                 </span>
               </h1>
               <span className="hidden md:inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                <Sparkles className="w-3 h-3" /> Smart Cashflow
+                <Sparkles className="w-3 h-3" /> {settings?.userName ? `Halo, ${settings.userName}` : 'Smart Cashflow'}
               </span>
             </div>
-            <p className="text-xs text-slate-400 hidden sm:block">
-              Kelola Dompet, Transfer & Catatan Keuangan Pintar
+            <p className="text-xs text-slate-400 hidden sm:block truncate max-w-xs">
+              {settings?.userBio || 'Kelola Dompet, Anggaran & Catatan Keuangan Pintar'}
             </p>
           </div>
         </div>
+
+        {/* Desktop Navigation Tabs */}
+        {onChangeTab && (
+          <nav className="hidden lg:flex items-center gap-1 bg-slate-950/70 p-1 rounded-2xl border border-slate-800/90 shadow-inner">
+            <button
+              type="button"
+              onClick={() => onChangeTab('home')}
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                currentTab === 'home'
+                  ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md shadow-emerald-950'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              }`}
+            >
+              <Home className="w-3.5 h-3.5" />
+              <span>Ringkasan</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => onChangeTab('budget')}
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                currentTab === 'budget'
+                  ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md shadow-emerald-950'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              }`}
+            >
+              <Target className="w-3.5 h-3.5" />
+              <span>Target & Celengan</span>
+              {(budgetsCount > 0 || savingsCount > 0) && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-400/20 text-emerald-300 font-bold border border-emerald-500/20">
+                  {budgetsCount + savingsCount}
+                </span>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => onChangeTab('analytics')}
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                currentTab === 'analytics'
+                  ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md shadow-emerald-950'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              }`}
+            >
+              <PieChart className="w-3.5 h-3.5" />
+              <span>Analitik</span>
+            </button>
+          </nav>
+        )}
 
         {/* Action Buttons */}
         <div className="flex items-center gap-2">
@@ -182,12 +245,22 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
             <button
               onClick={handleResetData}
-              title="Reset ke Data Contoh"
+              title="Reset ke Data Bawaan"
               className="p-2 text-slate-400 hover:text-rose-400 hover:bg-slate-700/50 rounded-lg transition-colors text-xs flex items-center"
             >
               <RotateCcw className="w-4 h-4" />
             </button>
           </div>
+
+          {/* Manage Categories Button */}
+          <button
+            onClick={onOpenCategoryModal}
+            className="hidden sm:flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-200 bg-slate-800 hover:bg-slate-750 border border-slate-700 rounded-xl transition-all shadow-sm active:scale-95"
+            title="Kelola Kategori Transaksi"
+          >
+            <Tag className="w-4 h-4 text-amber-400" />
+            <span>Kategori</span>
+          </button>
 
           {/* Add Wallet Button */}
           <button
@@ -196,16 +269,6 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <Plus className="w-4 h-4 text-emerald-400" />
             <span>Dompet Baru</span>
-          </button>
-
-          {/* Auto Detect Button */}
-          <button
-            onClick={onOpenAutoDetect}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 rounded-xl transition-all shadow-sm active:scale-95"
-            title="Deteksi Otomatis Mutasi & SMS Banking"
-          >
-            <Zap className="w-4 h-4 text-amber-400" />
-            <span className="hidden sm:inline">Auto Deteksi</span>
           </button>
 
           {/* Settings Button */}

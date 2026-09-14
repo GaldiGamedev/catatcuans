@@ -1,4 +1,5 @@
 import Swal from 'sweetalert2';
+import { soundFx } from './audio';
 
 // Base customized SweetAlert2 instance
 export const AppSwal = Swal.mixin({
@@ -37,6 +38,7 @@ export const showToast = (
 
 // Success modal
 export const showSuccessAlert = (title: string, text?: string) => {
+  soundFx.playCashRegister();
   return AppSwal.fire({
     icon: 'success',
     title,
@@ -48,6 +50,7 @@ export const showSuccessAlert = (title: string, text?: string) => {
 
 // Error modal
 export const showErrorAlert = (title: string, text?: string) => {
+  soundFx.playCancelOrDelete();
   return AppSwal.fire({
     icon: 'error',
     title,
@@ -74,6 +77,16 @@ export const showConfirmDialog = async (
     reverseButtons: true,
     iconColor: isDestructive ? '#f59e0b' : '#6366f1',
   });
+
+  if (result.isConfirmed) {
+    if (isDestructive) {
+      soundFx.playCancelOrDelete();
+    } else {
+      soundFx.playPop();
+    }
+  } else {
+    soundFx.playCancelOrDelete();
+  }
 
   return result.isConfirmed;
 };
@@ -102,6 +115,12 @@ export const showInsufficientBalanceWarning = async (
     cancelButtonText: 'Batalkan',
     iconColor: '#f59e0b',
   });
+
+  if (result.isConfirmed) {
+    soundFx.playPop();
+  } else {
+    soundFx.playCancelOrDelete();
+  }
 
   return result.isConfirmed;
 };

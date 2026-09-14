@@ -1,11 +1,10 @@
 import React from 'react';
-import { Home, PieChart, Plus, Zap, Settings } from 'lucide-react';
+import { Home, PieChart, Plus, Target, Settings, PiggyBank } from 'lucide-react';
 
 interface BottomNavMobileProps {
-  currentTab: 'home' | 'analytics' | 'wallets';
-  onChangeTab: (tab: 'home' | 'analytics' | 'wallets') => void;
+  currentTab: 'home' | 'analytics' | 'budget';
+  onChangeTab: (tab: 'home' | 'analytics' | 'budget') => void;
   onOpenTransactionModal: () => void;
-  onOpenAutoDetect: () => void;
   onOpenSettings: () => void;
 }
 
@@ -13,7 +12,6 @@ export const BottomNavMobile: React.FC<BottomNavMobileProps> = ({
   currentTab,
   onChangeTab,
   onOpenTransactionModal,
-  onOpenAutoDetect,
   onOpenSettings,
 }) => {
   return (
@@ -30,15 +28,15 @@ export const BottomNavMobile: React.FC<BottomNavMobileProps> = ({
           <span className="text-[10px]">Ringkasan</span>
         </button>
 
-        {/* Analytics */}
+        {/* Budget & Savings */}
         <button
-          onClick={() => onChangeTab('analytics')}
+          onClick={() => onChangeTab('budget')}
           className={`flex flex-col items-center gap-1 p-1.5 transition-colors ${
-            currentTab === 'analytics' ? 'text-indigo-400 font-semibold' : 'text-slate-400 hover:text-slate-200'
+            currentTab === 'budget' ? 'text-emerald-400 font-semibold' : 'text-slate-400 hover:text-slate-200'
           }`}
         >
-          <PieChart className="w-5 h-5" />
-          <span className="text-[10px]">Analitik</span>
+          <Target className="w-5 h-5" />
+          <span className="text-[10px]">Target</span>
         </button>
 
         {/* Center Floating Plus Button */}
@@ -52,13 +50,15 @@ export const BottomNavMobile: React.FC<BottomNavMobileProps> = ({
           </button>
         </div>
 
-        {/* Auto Detect Mutasi */}
+        {/* Analytics */}
         <button
-          onClick={onOpenAutoDetect}
-          className="flex flex-col items-center gap-1 p-1.5 text-amber-400/90 hover:text-amber-300 transition-colors"
+          onClick={() => onChangeTab('analytics')}
+          className={`flex flex-col items-center gap-1 p-1.5 transition-colors ${
+            currentTab === 'analytics' ? 'text-indigo-400 font-semibold' : 'text-slate-400 hover:text-slate-200'
+          }`}
         >
-          <Zap className="w-5 h-5 text-amber-400" />
-          <span className="text-[10px]">Auto Deteksi</span>
+          <PieChart className="w-5 h-5" />
+          <span className="text-[10px]">Analitik</span>
         </button>
 
         {/* Settings */}
@@ -73,4 +73,3 @@ export const BottomNavMobile: React.FC<BottomNavMobileProps> = ({
     </div>
   );
 };
-

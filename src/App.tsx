@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { Home, Target, PieChart, Sparkles } from 'lucide-react';
 import { Header } from './components/Header';
 import { OverviewCards } from './components/OverviewCards';
 import { WalletsSection } from './components/WalletsSection';
@@ -8,9 +9,20 @@ import { TransactionModal } from './components/TransactionModal';
 import { WalletModal } from './components/WalletModal';
 import { CategoryModal } from './components/CategoryModal';
 import { BottomNavMobile } from './components/BottomNavMobile';
-import { AutoDetectModal } from './components/AutoDetectModal';
 import { SettingsModal } from './components/SettingsModal';
-import { Wallet, Transaction, Category, TransactionType, AppSettings } from './types';
+import { BudgetSection } from './components/BudgetSection';
+import { SavingsSection } from './components/SavingsSection';
+import { QuickSpendsBar } from './components/QuickSpendsBar';
+import {
+  Wallet,
+  Transaction,
+  Category,
+  TransactionType,
+  AppSettings,
+  Budget,
+  SavingsGoal,
+  QuickSpend,
+} from './types';
 import {
   getStoredWallets,
   saveStoredWallets,
@@ -20,9 +32,19 @@ import {
   saveStoredCategories,
   getStoredSettings,
   saveStoredSettings,
+  getStoredBudgets,
+  saveStoredBudgets,
+  getStoredSavings,
+  saveStoredSavings,
+  getStoredQuickSpends,
+  saveStoredQuickSpends,
   calculateWalletBalances,
+  DEFAULT_CATEGORIES,
+  DEFAULT_WALLETS,
 } from './utils/storage';
-import { Sparkles, Zap, ShieldCheck } from 'lucide-react';
+import { showToast, showSuccessAlert } from './utils/sweetalert';
+import { formatRupiah, getTodayDateString } from './utils/formatters';
+import { soundFx } from './utils/audio';
 
 export default function App() {
   // Primary State
@@ -30,10 +52,13 @@ export default function App() {
   const [transactions, setTransactions] = useState<Transaction[]>(() => getStoredTransactions());
   const [categories, setCategories] = useState<Category[]>(() => getStoredCategories());
   const [settings, setSettings] = useState<AppSettings>(() => getStoredSettings());
+  const [budgets, setBudgets] = useState<Budget[]>(() => getStoredBudgets());
+  const [savings, setSavings] = useState<SavingsGoal[]>(() => getStoredSavings());
+  const [quickSpends, setQuickSpends] = useState<QuickSpend[]>(() => getStoredQuickSpends());
 
   // Navigation & Filtering
   const [selectedWalletId, setSelectedWalletId] = useState<string | null>(null);
-  const [mobileTab, setMobileTab] = useState<'home' | 'analytics' | 'wallets'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'budget' | 'analytics'>('home');
 
   // Modals state
   const [isTxModalOpen, setIsTxModalOpen] = useState(false);
@@ -44,10 +69,9 @@ export default function App() {
   const [walletToEdit, setWalletToEdit] = useState<Wallet | null>(null);
 
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
-  const [isAutoDetectOpen, setIsAutoDetectOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
-  // Sync to LocalStorage whenever state changes
+  // Sync to LocalStorage
   useEffect(() => {
     saveStoredWallets(rawWallets);
   }, [rawWallets]);
@@ -62,9 +86,22 @@ export default function App() {
 
   useEffect(() => {
     saveStoredSettings(settings);
+    soundFx.setEnabled(settings.soundEnabled);
   }, [settings]);
 
-  // Compute real-time balances for all wallets based on transactions
+  useEffect(() => {
+    saveStoredBudgets(budgets);
+  }, [budgets]);
+
+  useEffect(() => {
+    saveStoredSavings(savings);
+  }, [savings]);
+
+  useEffect(() => {
+    saveStoredQuickSpends(quickSpends);
+  }, [quickSpends]);
+
+  // Compute real-time balances for all wallets
   const wallets = useMemo(() => {
     return calculateWalletBalances(rawWallets, transactions);
   }, [rawWallets, transactions]);
@@ -112,10 +149,136 @@ export default function App() {
     };
 
     setTransactions((prev) => [newTx, ...prev]);
+
+    if (settings.soundEnabled) {
+      soundFx.playCashRegister();
+    }
   };
 
   const handleDeleteTransaction = (id: string) => {
     setTransactions((prev) => prev.filter((tx) => tx.id !== id));
+  };
+
+  // Quick Spend Trigger (1-tap recording)
+  const handleLogQuickSpend = (qs: QuickSpend) => {
+    const chosenWallet = wallets.find((w) => w.id === qs.walletId) || wallets[0];
+    if (!chosenWallet) {
+      showToast('Belum ada dompet aktif', 'error');
+      return;
+    }
+
+    const newTx: Transaction = {
+      id: 'tx-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
+      type: 'expense',
+      amount: qs.amount,
+      date: getTodayDateString(),
+      category: qs.category,
+      walletId: chosenWallet.id,
+      note: `Pintasan cepat: ${qs.name}`,
+      createdAt: Date.now(),
+    };
+
+    setTransactions((prev) => [newTx, ...prev]);
+    if (settings.soundEnabled) {
+      soundFx.playCashRegister();
+    }
+    showToast(`Tercatat: ${qs.name} ${formatRupiah(qs.amount)} dari ${chosenWallet.name}`, 'success');
+  };
+
+  const handleAddQuickSpend = (newQS: QuickSpend) => {
+    setQuickSpends((prev) => [...prev, newQS]);
+  };
+
+  const handleDeleteQuickSpend = (id: string) => {
+    setQuickSpends((prev) => prev.filter((q) => q.id !== id));
+  };
+
+  // Budget Actions
+  const handleSaveBudget = (b: Budget) => {
+    setBudgets((prev) => {
+      const idx = prev.findIndex((item) => item.id === b.id || item.categoryName === b.categoryName);
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = b;
+        return next;
+      }
+      return [...prev, b];
+    });
+  };
+
+  const handleDeleteBudget = (budgetId: string) => {
+    setBudgets((prev) => prev.filter((b) => b.id !== budgetId));
+  };
+
+  // Savings Actions
+  const handleSaveSaving = (goal: SavingsGoal) => {
+    setSavings((prev) => {
+      const idx = prev.findIndex((g) => g.id === goal.id);
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = goal;
+        return next;
+      }
+      return [...prev, goal];
+    });
+  };
+
+  const handleDeleteSaving = (goalId: string) => {
+    setSavings((prev) => prev.filter((g) => g.id !== goalId));
+  };
+
+  const handleDepositSaving = (savingId: string, amount: number, sourceWalletId?: string) => {
+    setSavings((prev) =>
+      prev.map((g) => {
+        if (g.id === savingId) {
+          return { ...g, currentAmount: g.currentAmount + amount };
+        }
+        return g;
+      })
+    );
+
+    // If source wallet specified, deduct balance by recording expense to celengan
+    if (sourceWalletId) {
+      const goal = savings.find((g) => g.id === savingId);
+      const newTx: Transaction = {
+        id: 'tx-save-' + Date.now(),
+        type: 'expense',
+        amount,
+        date: getTodayDateString(),
+        category: 'Hasil Cuan / Usaha',
+        walletId: sourceWalletId,
+        note: `Setoran Celengan: ${goal?.name || 'Tabungan'}`,
+        createdAt: Date.now(),
+      };
+      setTransactions((prev) => [newTx, ...prev]);
+    }
+  };
+
+  const handleWithdrawSaving = (savingId: string, amount: number, destWalletId?: string) => {
+    setSavings((prev) =>
+      prev.map((g) => {
+        if (g.id === savingId) {
+          return { ...g, currentAmount: Math.max(0, g.currentAmount - amount) };
+        }
+        return g;
+      })
+    );
+
+    // If destination wallet specified, add income
+    if (destWalletId) {
+      const goal = savings.find((g) => g.id === savingId);
+      const newTx: Transaction = {
+        id: 'tx-withdraw-' + Date.now(),
+        type: 'income',
+        amount,
+        date: getTodayDateString(),
+        category: 'Hasil Cuan / Usaha',
+        walletId: destWalletId,
+        note: `Penarikan Celengan: ${goal?.name || 'Tabungan'}`,
+        createdAt: Date.now(),
+      };
+      setTransactions((prev) => [newTx, ...prev]);
+    }
   };
 
   // Wallet Actions
@@ -157,8 +320,24 @@ export default function App() {
     setCategories((prev) => [...prev, newCategory]);
   };
 
+  const handleUpdateCategory = (updatedCat: Category, oldName?: string) => {
+    setCategories((prev) => prev.map((c) => (c.id === updatedCat.id ? updatedCat : c)));
+    if (oldName && oldName !== updatedCat.name) {
+      setTransactions((prev) =>
+        prev.map((t) => (t.category === oldName ? { ...t, category: updatedCat.name } : t))
+      );
+      setBudgets((prev) =>
+        prev.map((b) => (b.categoryName === oldName ? { ...b, categoryName: updatedCat.name } : b))
+      );
+    }
+  };
+
   const handleDeleteCategory = (id: string) => {
     setCategories((prev) => prev.filter((c) => c.id !== id));
+  };
+
+  const handleResetCategories = () => {
+    setCategories(DEFAULT_CATEGORIES);
   };
 
   // Data Reset/Restore
@@ -171,6 +350,79 @@ export default function App() {
     setTransactions(newTransactions);
     setCategories(newCategories);
     setSelectedWalletId(null);
+  };
+
+  // Load rich demo simulation data
+  const handleLoadDemoData = () => {
+    const today = new Date();
+    const curYear = today.getFullYear();
+    const curMonth = String(today.getMonth() + 1).padStart(2, '0');
+
+    const demoWallets: Wallet[] = [
+      { id: 'w-cash', name: 'Dompet Tunai', type: 'cash', color: '#10b981', icon: 'Wallet', initialBalance: 500000 },
+      { id: 'w-bank', name: 'BCA Prioritas', type: 'bank', color: '#3b82f6', icon: 'Building2', initialBalance: 8500000 },
+      { id: 'w-ewallet', name: 'DANA & GoPay', type: 'ewallet', color: '#06b6d4', icon: 'Smartphone', initialBalance: 750000 },
+    ];
+
+    const demoTransactions: Transaction[] = [
+      {
+        id: 'demo-1',
+        type: 'income',
+        amount: 8500000,
+        date: `${curYear}-${curMonth}-01`,
+        category: 'Gaji / Honor',
+        walletId: 'w-bank',
+        note: 'Gaji Bulanan Masuk Rekening BCA',
+        createdAt: Date.now() - 86400000 * 5,
+      },
+      {
+        id: 'demo-2',
+        type: 'transfer',
+        amount: 1000000,
+        adminFee: 2500,
+        date: `${curYear}-${curMonth}-02`,
+        category: 'Transfer',
+        walletId: 'w-bank',
+        toWalletId: 'w-ewallet',
+        note: 'Top Up saldo e-wallet via BI-Fast',
+        createdAt: Date.now() - 86400000 * 4,
+      },
+      {
+        id: 'demo-3',
+        type: 'expense',
+        amount: 125000,
+        date: `${curYear}-${curMonth}-03`,
+        category: 'Makanan & Minuman',
+        walletId: 'w-ewallet',
+        note: 'Makan bareng teman di Resto',
+        createdAt: Date.now() - 86400000 * 3,
+      },
+      {
+        id: 'demo-4',
+        type: 'expense',
+        amount: 350000,
+        date: `${curYear}-${curMonth}-04`,
+        category: 'Pulsa & Tagihan',
+        walletId: 'w-bank',
+        note: 'Bayar Wifi & Listrik PLN Bulanan',
+        createdAt: Date.now() - 86400000 * 2,
+      },
+      {
+        id: 'demo-5',
+        type: 'expense',
+        amount: 35000,
+        date: `${curYear}-${curMonth}-05`,
+        category: 'Transportasi',
+        walletId: 'w-cash',
+        note: 'Bensin Motor Shell Super',
+        createdAt: Date.now() - 86400000,
+      },
+    ];
+
+    setRawWallets(demoWallets);
+    setTransactions(demoTransactions);
+    showSuccessAlert('Data Simulasi Dimuat! 🚀', 'Kini Anda bisa melihat grafik mutasi, alokasi anggaran, dan celengan impian.');
+    setIsSettingsOpen(false);
   };
 
   const handleOpenTransferModalWithSource = (walletId: string) => {
@@ -186,37 +438,117 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col pb-20 md:pb-10">
-      {/* Background ambient light - optimized without continuous heavy animations */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
-        <div className="absolute -top-32 -left-32 w-96 h-96 bg-emerald-600/10 rounded-full blur-3xl" />
-        <div className="absolute top-1/3 -right-32 w-96 h-96 bg-indigo-600/10 rounded-full blur-3xl" />
-      </div>
+    <div
+      className={`min-h-screen bg-slate-950 text-slate-100 flex flex-col pb-20 md:pb-10 ${
+        settings.compactMode ? 'text-xs' : ''
+      }`}
+    >
+      {/* Background ambient light - disabled in lowPowerMode */}
+      {!settings.lowPowerMode && (
+        <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
+          <div className="absolute -top-32 -left-32 w-96 h-96 bg-emerald-600/10 rounded-full blur-3xl" />
+          <div className="absolute top-1/3 -right-32 w-96 h-96 bg-indigo-600/10 rounded-full blur-3xl" />
+        </div>
+      )}
 
       {/* Main Header */}
       <Header
         onOpenTransactionModal={() => handleOpenNewTransaction('expense')}
         onOpenWalletModal={() => handleOpenWalletModal()}
-        onOpenAutoDetect={() => setIsAutoDetectOpen(true)}
+        onOpenCategoryModal={() => setIsCategoryModalOpen(true)}
         onOpenSettings={() => setIsSettingsOpen(true)}
         wallets={wallets}
         transactions={transactions}
         categories={categories}
+        settings={settings}
         onResetData={handleResetData}
+        currentTab={activeTab}
+        onChangeTab={setActiveTab}
+        budgetsCount={budgets.length}
+        savingsCount={savings.length}
       />
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 relative z-10">
-        {/* Mobile Tab: Analytics Only */}
-        {mobileTab === 'analytics' && (
-          <div className="md:hidden">
-            <AnalyticsSection transactions={transactions} />
-          </div>
-        )}
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 relative z-10 space-y-6">
+        {/* Desktop / Tablet Navigation Tabs Bar */}
+        <div className="hidden md:flex items-center justify-between gap-4 pb-2 border-b border-slate-800/80">
+          <div className="flex items-center gap-1.5 p-1 bg-slate-950/70 border border-slate-800/90 rounded-2xl">
+            <button
+              type="button"
+              onClick={() => setActiveTab('home')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all ${
+                activeTab === 'home'
+                  ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md shadow-emerald-950'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              }`}
+            >
+              <Home className="w-4 h-4" />
+              <span>Ringkasan Kas</span>
+            </button>
 
-        {/* Mobile Tab: Wallets Only */}
-        {mobileTab === 'wallets' && (
-          <div className="md:hidden">
+            <button
+              type="button"
+              onClick={() => setActiveTab('budget')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all ${
+                activeTab === 'budget'
+                  ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md shadow-emerald-950'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              }`}
+            >
+              <Target className="w-4 h-4" />
+              <span>Target & Celengan</span>
+              {(budgets.length > 0 || savings.length > 0) && (
+                <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
+                  {budgets.length + savings.length}
+                </span>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('analytics')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all ${
+                activeTab === 'analytics'
+                  ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md shadow-emerald-950'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              }`}
+            >
+              <PieChart className="w-4 h-4" />
+              <span>Analitik & Grafik</span>
+            </button>
+          </div>
+
+          <div className="text-xs text-slate-400 hidden lg:flex items-center gap-2">
+            <span>{wallets.length} Dompet Aktif</span>
+            <span>•</span>
+            <span>{transactions.length} Transaksi Tercatat</span>
+          </div>
+        </div>
+
+        {/* Tab 1: Ringkasan Kas (Home) - Cleaned up without Target Anggaran & Celengan */}
+        {activeTab === 'home' && (
+          <div className="space-y-6 animate-in fade-in duration-200">
+            {/* Quick Spends 1-Tap Bar */}
+            <QuickSpendsBar
+              quickSpends={quickSpends}
+              wallets={wallets}
+              categories={categories}
+              onLogQuickSpend={handleLogQuickSpend}
+              onAddQuickSpend={handleAddQuickSpend}
+              onDeleteQuickSpend={handleDeleteQuickSpend}
+            />
+
+            {/* Top Overview Cards */}
+            <OverviewCards
+              totalBalance={overview.totalBalance}
+              totalIncome={overview.totalIncome}
+              totalExpense={overview.totalExpense}
+              totalAdminFees={overview.totalAdminFees}
+              transactionCount={overview.transactionCount}
+              privacyMode={settings.privacyMode}
+            />
+
+            {/* Wallets Horizontal / Grid Section */}
             <WalletsSection
               wallets={wallets}
               selectedWalletId={selectedWalletId}
@@ -226,84 +558,97 @@ export default function App() {
               onDeleteWallet={handleDeleteWallet}
               privacyMode={settings.privacyMode}
             />
+
+            {/* Main Grid: Left Transactions List, Right Analytics Mini Breakdown */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+              {/* Left 8 Columns: Transaction History */}
+              <div className="lg:col-span-8">
+                <TransactionList
+                  transactions={transactions}
+                  wallets={wallets}
+                  selectedWalletId={selectedWalletId}
+                  onSelectWallet={setSelectedWalletId}
+                  onDeleteTransaction={handleDeleteTransaction}
+                  onOpenNewTransaction={() => handleOpenNewTransaction('expense')}
+                />
+              </div>
+
+              {/* Right 4 Columns: Analytics Breakdown */}
+              <div className="lg:col-span-4 space-y-6">
+                <AnalyticsSection transactions={transactions} />
+              </div>
+            </div>
           </div>
         )}
 
-        {/* Default View (Desktop always shows full dashboard; Mobile shows when on 'home') */}
-        <div className={mobileTab !== 'home' ? 'hidden md:block' : 'block'}>
-          {/* Quick Smart Notification Banner */}
-          <div className="mb-4 p-3 sm:p-3.5 rounded-2xl bg-gradient-to-r from-amber-500/10 via-emerald-500/10 to-teal-500/10 border border-amber-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
-                <Zap className="w-4 h-4" />
-              </div>
+        {/* Tab 2: Dedicated Target Anggaran & Celengan Impian Page */}
+        {activeTab === 'budget' && (
+          <div className="space-y-6 animate-in fade-in duration-200">
+            {/* Header / Intro Card */}
+            <div className="p-5 sm:p-6 rounded-3xl bg-gradient-to-r from-emerald-950/40 via-teal-950/30 to-slate-900 border border-emerald-500/20 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div>
-                <p className="text-xs font-bold text-white">
-                  Fitur Deteksi Notifikasi Transfer & Mutasi Aktif
-                </p>
-                <p className="text-[11px] text-slate-400">
-                  Salin pesan SMS banking, receipt e-wallet, atau notifikasi transfer dan tempel untuk otomatis tercatat.
-                </p>
+                <div className="flex items-center gap-2.5">
+                  <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center shadow-inner">
+                    <Target className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg sm:text-xl font-bold text-white flex items-center gap-2">
+                      <span>Target Anggaran & Celengan Impian</span>
+                    </h2>
+                    <p className="text-xs text-slate-300 mt-0.5">
+                      Rencanakan batas belanja bulanan dan kumpulkan tabungan celengan terpisah dari saldo belanja.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2.5 self-stretch sm:self-auto">
+                <div className="flex-1 sm:flex-initial px-4 py-2 rounded-2xl bg-slate-900/90 border border-slate-800 text-center">
+                  <div className="text-[10px] text-slate-400 font-medium">Batas Anggaran</div>
+                  <div className="text-sm font-bold text-emerald-400">{budgets.length} Kategori</div>
+                </div>
+                <div className="flex-1 sm:flex-initial px-4 py-2 rounded-2xl bg-slate-900/90 border border-slate-800 text-center">
+                  <div className="text-[10px] text-slate-400 font-medium">Target Celengan</div>
+                  <div className="text-sm font-bold text-teal-400">{savings.length} Target</div>
+                </div>
               </div>
             </div>
-            <button
-              onClick={() => setIsAutoDetectOpen(true)}
-              className="self-end sm:self-auto px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-emerald-500 hover:from-amber-400 hover:to-emerald-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-md transition-all active:scale-95"
-            >
-              <Zap className="w-3.5 h-3.5 fill-current" />
-              <span>Coba Deteksi Mutasi</span>
-            </button>
+
+            {/* Target Anggaran Bulanan Section */}
+            <BudgetSection
+              budgets={budgets}
+              categories={categories}
+              transactions={transactions}
+              onSaveBudget={handleSaveBudget}
+              onDeleteBudget={handleDeleteBudget}
+              onOpenCategoryModal={() => setIsCategoryModalOpen(true)}
+            />
+
+            {/* Celengan & Target Impian Section */}
+            <SavingsSection
+              savings={savings}
+              wallets={wallets}
+              onSaveSaving={handleSaveSaving}
+              onDeleteSaving={handleDeleteSaving}
+              onDepositSaving={handleDepositSaving}
+              onWithdrawSaving={handleWithdrawSaving}
+            />
           </div>
+        )}
 
-          {/* Top Overview Cards */}
-          <OverviewCards
-            totalBalance={overview.totalBalance}
-            totalIncome={overview.totalIncome}
-            totalExpense={overview.totalExpense}
-            totalAdminFees={overview.totalAdminFees}
-            transactionCount={overview.transactionCount}
-            privacyMode={settings.privacyMode}
-          />
-
-          {/* Wallets Horizontal / Grid Section */}
-          <WalletsSection
-            wallets={wallets}
-            selectedWalletId={selectedWalletId}
-            onSelectWallet={setSelectedWalletId}
-            onOpenWalletModal={handleOpenWalletModal}
-            onOpenTransferModalWithSource={handleOpenTransferModalWithSource}
-            onDeleteWallet={handleDeleteWallet}
-            privacyMode={settings.privacyMode}
-          />
-
-          {/* Main Grid: Left Transactions List, Right Analytics & Quick Actions */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-            {/* Left 8 Columns: Transaction History */}
-            <div className="lg:col-span-8">
-              <TransactionList
-                transactions={transactions}
-                wallets={wallets}
-                selectedWalletId={selectedWalletId}
-                onSelectWallet={setSelectedWalletId}
-                onDeleteTransaction={handleDeleteTransaction}
-                onOpenNewTransaction={() => handleOpenNewTransaction('expense')}
-              />
-            </div>
-
-            {/* Right 4 Columns: Analytics Breakdown */}
-            <div className="lg:col-span-4 space-y-6">
-              <AnalyticsSection transactions={transactions} />
-            </div>
+        {/* Tab 3: Dedicated Full Analytics Page */}
+        {activeTab === 'analytics' && (
+          <div className="space-y-6 animate-in fade-in duration-200">
+            <AnalyticsSection transactions={transactions} />
           </div>
-        </div>
+        )}
       </main>
 
       {/* Floating Bottom Nav for Mobile */}
       <BottomNavMobile
-        currentTab={mobileTab}
-        onChangeTab={setMobileTab}
+        currentTab={activeTab}
+        onChangeTab={setActiveTab}
         onOpenTransactionModal={() => handleOpenNewTransaction('expense')}
-        onOpenAutoDetect={() => setIsAutoDetectOpen(true)}
         onOpenSettings={() => setIsSettingsOpen(true)}
       />
 
@@ -337,17 +682,11 @@ export default function App() {
         isOpen={isCategoryModalOpen}
         onClose={() => setIsCategoryModalOpen(false)}
         categories={categories}
+        transactions={transactions}
         onAddCategory={handleAddCategory}
+        onUpdateCategory={handleUpdateCategory}
         onDeleteCategory={handleDeleteCategory}
-      />
-
-      {/* Auto Detect Notification Modal */}
-      <AutoDetectModal
-        isOpen={isAutoDetectOpen}
-        onClose={() => setIsAutoDetectOpen(false)}
-        wallets={wallets}
-        categories={categories}
-        onSaveTransaction={handleSaveTransaction}
+        onResetCategories={handleResetCategories}
       />
 
       {/* Settings Modal */}
@@ -359,8 +698,14 @@ export default function App() {
         wallets={wallets}
         transactions={transactions}
         categories={categories}
+        budgets={budgets}
+        savings={savings}
         onResetData={handleResetData}
-        onOpenAutoDetect={() => setIsAutoDetectOpen(true)}
+        onLoadDemoData={handleLoadDemoData}
+        onOpenCategoryModal={() => {
+          setIsSettingsOpen(false);
+          setIsCategoryModalOpen(true);
+        }}
       />
     </div>
   );

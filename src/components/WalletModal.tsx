@@ -103,6 +103,8 @@ export const WalletModal: React.FC<WalletModalProps> = ({
           </h2>
           <button
             onClick={onClose}
+            data-sound="cancel"
+            aria-label="Tutup dan Batalkan"
             className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
           >
             <X className="w-5 h-5" />
