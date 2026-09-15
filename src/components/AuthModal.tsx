@@ -14,13 +14,20 @@ import {
   ArrowRight,
   RefreshCw,
   X,
+  Copy,
+  Check,
+  ExternalLink,
+  Globe,
+  HelpCircle,
 } from 'lucide-react';
 import {
   signInWithGoogle,
+  signInWithGoogleRedirect,
   loginWithEmail,
   registerWithEmail,
   sendResetPassword,
   logoutUser,
+  firebaseConfig,
   User,
 } from '../utils/firebase';
 import { showToast, showSuccessAlert, showErrorAlert } from '../utils/sweetalert';
@@ -52,13 +59,34 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [diagnostic, setDiagnostic] = useState<{
+    code: string;
+    domain: string;
+    projectId: string;
+  } | null>(null);
+  const [copiedDomain, setCopiedDomain] = useState(false);
 
   if (!isOpen) return null;
+
+  // Copy Current Domain Helper
+  const handleCopyDomain = async (domainToCopy: string) => {
+    try {
+      await navigator.clipboard.writeText(domainToCopy);
+      setCopiedDomain(true);
+      showToast(`Domain "${domainToCopy}" disalin!`, 'info');
+      setTimeout(() => setCopiedDomain(false), 2500);
+    } catch {
+      showToast('Gagal menyalin domain secara otomatis', 'error');
+    }
+  };
 
   // Google Login Handler
   const handleGoogleLogin = async () => {
     setIsLoading(true);
     setErrorMessage(null);
+    setDiagnostic(null);
+    const currentHost = typeof window !== 'undefined' ? window.location.hostname : '';
+
     try {
       soundFx.playPop(1.2);
       const user = await signInWithGoogle();
@@ -69,16 +97,53 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     } catch (err: any) {
       console.error('Google Sign-In Error:', err);
       let msg = 'Gagal masuk dengan akun Google.';
-      if (err.code === 'auth/popup-blocked') {
-        msg = 'Jendela popup Google diblokir peramban. Izinkan popup atau gunakan login Email.';
-      } else if (err.code === 'auth/popup-closed-by-user') {
+      const errorCode = err.code || '';
+      const errorMsg = err.message || '';
+
+      if (errorCode === 'auth/unauthorized-domain' || errorMsg.includes('unauthorized-domain')) {
+        msg = `Domain hosting (${currentHost}) belum didaftarkan di Firebase Console.`;
+        setDiagnostic({
+          code: 'auth/unauthorized-domain',
+          domain: currentHost,
+          projectId: firebaseConfig.projectId,
+        });
+      } else if (errorCode === 'auth/operation-not-allowed') {
+        msg = 'Metode Sign-in Google belum diaktifkan di Firebase Console.';
+        setDiagnostic({
+          code: 'auth/operation-not-allowed',
+          domain: currentHost,
+          projectId: firebaseConfig.projectId,
+        });
+      } else if (errorCode === 'auth/popup-blocked') {
+        msg = 'Jendela popup Google diblokir peramban Anda.';
+        setDiagnostic({
+          code: 'auth/popup-blocked',
+          domain: currentHost,
+          projectId: firebaseConfig.projectId,
+        });
+      } else if (errorCode === 'auth/popup-closed-by-user') {
         msg = 'Proses login Google dibatalkan.';
-      } else if (err.message) {
-        msg = err.message;
+      } else if (errorMsg) {
+        msg = errorMsg;
       }
+
       setErrorMessage(msg);
       showToast(msg, 'error');
     } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Google Login with Redirect fallback (for popups blocked or webviews)
+  const handleGoogleRedirect = async () => {
+    setIsLoading(true);
+    setErrorMessage(null);
+    try {
+      soundFx.playPop(1.2);
+      await signInWithGoogleRedirect();
+    } catch (err: any) {
+      console.error('Google Redirect Error:', err);
+      setErrorMessage(err.message || 'Gagal memulai login Google Redirect.');
       setIsLoading(false);
     }
   };
@@ -271,11 +336,132 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               </p>
             </div>
 
-            {/* Error Message Box */}
+            {/* Error Message & Interactive Diagnosis Box */}
             {errorMessage && (
-              <div className="p-3 rounded-2xl bg-rose-950/40 border border-rose-500/30 flex items-start gap-2.5 text-xs text-rose-300 animate-in fade-in">
-                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
-                <div>{errorMessage}</div>
+              <div className="space-y-2.5 animate-in fade-in">
+                <div className="p-3 rounded-2xl bg-rose-950/40 border border-rose-500/30 flex items-start gap-2.5 text-xs text-rose-300">
+                  <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                  <div>{errorMessage}</div>
+                </div>
+
+                {/* Unauthorized Domain Diagnostic Card */}
+                {diagnostic?.code === 'auth/unauthorized-domain' && (
+                  <div className="p-4 rounded-2xl bg-slate-950 border border-amber-500/40 space-y-3 text-xs">
+                    <div className="flex items-center gap-2 text-amber-400 font-bold">
+                      <Globe className="w-4 h-4" />
+                      <span>Cara Mengaktifkan Login Google di Domain Ini:</span>
+                    </div>
+
+                    <p className="text-slate-300 text-[11px] leading-relaxed">
+                      Firebase mewajibkan domain hosting tempat aplikasi dipublish didaftarkan ke{' '}
+                      <strong className="text-white">Authorized Domains</strong> agar login Google diizinkan.
+                    </p>
+
+                    {/* Current Domain Box with Copy Button */}
+                    <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-900 border border-slate-700/80">
+                      <div className="truncate text-slate-200 font-mono text-[11px] select-all">
+                        {diagnostic.domain}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleCopyDomain(diagnostic.domain)}
+                        className="ml-2 px-2.5 py-1 rounded-lg bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-300 font-semibold text-[10px] flex items-center gap-1.5 transition-all active:scale-95 shrink-0"
+                      >
+                        {copiedDomain ? (
+                          <>
+                            <Check className="w-3 h-3 text-emerald-400" />
+                            <span>Tersalin!</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3 h-3" />
+                            <span>Salin Domain</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    {/* Step-by-step guidance */}
+                    <div className="space-y-1.5 text-[11px] text-slate-400 pl-1">
+                      <div className="flex items-start gap-2">
+                        <span className="w-4 h-4 rounded-full bg-slate-800 text-slate-300 flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">1</span>
+                        <span>Klik tombol <strong>Buka Pengaturan Firebase</strong> di bawah.</span>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <span className="w-4 h-4 rounded-full bg-slate-800 text-slate-300 flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">2</span>
+                        <span>Di tab <strong>Settings</strong>, gulir ke bagian <strong>Authorized domains</strong> lalu klik <strong>Add domain</strong>.</span>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <span className="w-4 h-4 rounded-full bg-slate-800 text-slate-300 flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">3</span>
+                        <span>Tempel domain yang disalin ({diagnostic.domain}), lalu klik <strong>Save</strong>.</span>
+                      </div>
+                    </div>
+
+                    {/* Direct link button */}
+                    <a
+                      href={`https://console.firebase.google.com/project/${diagnostic.projectId}/authentication/settings`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full py-2.5 px-3 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold text-xs flex items-center justify-center gap-2 transition-colors"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      <span>Buka Pengaturan Firebase Console</span>
+                    </a>
+
+                    {/* Quick alternative button */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAuthMode('login');
+                        setErrorMessage(null);
+                        setDiagnostic(null);
+                      }}
+                      className="w-full text-center text-[11px] text-slate-400 hover:text-white underline pt-1"
+                    >
+                      Atau gunakan Login Email & Kata Sandi (Langsung aktif tanpa setup domain)
+                    </button>
+                  </div>
+                )}
+
+                {/* Operation not allowed Diagnostic */}
+                {diagnostic?.code === 'auth/operation-not-allowed' && (
+                  <div className="p-4 rounded-2xl bg-slate-950 border border-amber-500/40 space-y-2.5 text-xs">
+                    <div className="text-amber-400 font-bold flex items-center gap-1.5">
+                      <AlertCircle className="w-4 h-4" />
+                      <span>Google Sign-In Belum Diaktifkan</span>
+                    </div>
+                    <p className="text-slate-300 text-[11px]">
+                      Penyedia (Provider) Google belum diaktifkan di Firebase Console untuk proyek ini.
+                    </p>
+                    <a
+                      href={`https://console.firebase.google.com/project/${diagnostic.projectId}/authentication/providers`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full py-2 px-3 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/40 font-semibold text-xs flex items-center justify-center gap-2"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      <span>Aktifkan Provider Google di Console</span>
+                    </a>
+                  </div>
+                )}
+
+                {/* Popup Blocked Diagnostic */}
+                {diagnostic?.code === 'auth/popup-blocked' && (
+                  <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-2 text-xs">
+                    <p className="text-slate-300 text-[11px]">
+                      Jendela popup login terhalang kebijakan browser. Anda dapat mencoba mode direct redirect:
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleGoogleRedirect}
+                      disabled={isLoading}
+                      className="w-full py-2 px-3 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 font-bold text-xs flex items-center justify-center gap-2"
+                    >
+                      <ArrowRight className="w-3.5 h-3.5" />
+                      <span>Coba Login dengan Redirect (Tanpa Popup)</span>
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 

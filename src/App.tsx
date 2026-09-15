@@ -24,6 +24,7 @@ import {
   loadUserCloudData,
   saveUserCloudData,
   testFirestoreConnection,
+  checkRedirectResult,
 } from './utils/firebase';
 import {
   Wallet,
@@ -116,6 +117,11 @@ export default function App() {
   // Initialize Firebase Auth & Sync listener
   useEffect(() => {
     testFirestoreConnection();
+    // Catch any redirect sign-in outcome
+    checkRedirectResult().catch((err) => {
+      console.warn('Firebase redirect result error:', err);
+    });
+
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setCurrentUser(user);
       setIsAuthChecking(false);
