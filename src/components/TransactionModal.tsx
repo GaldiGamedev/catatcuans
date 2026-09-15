@@ -10,6 +10,8 @@ import {
   Tag,
   Check,
   Coins,
+  Camera,
+  Sparkles,
 } from 'lucide-react';
 import { Transaction, TransactionType, Wallet, Category } from '../types';
 import { formatRupiah, getTodayDateString, parseNumberInput } from '../utils/formatters';
@@ -29,6 +31,13 @@ interface TransactionModalProps {
   defaultSourceWalletId?: string;
   defaultAdminFee?: number;
   onOpenCategoryModal?: () => void;
+  onOpenReceiptScan?: () => void;
+  initialPrefillData?: {
+    amount?: number;
+    date?: string;
+    note?: string;
+    category?: string;
+  };
 }
 
 export const TransactionModal: React.FC<TransactionModalProps> = ({
@@ -41,6 +50,8 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
   defaultSourceWalletId,
   defaultAdminFee = 0,
   onOpenCategoryModal,
+  onOpenReceiptScan,
+  initialPrefillData,
 }) => {
   const [type, setType] = useState<TransactionType>(defaultType);
   const [walletId, setWalletId] = useState<string>('');
@@ -62,16 +73,20 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
       const secondWallet = wallets.find((w) => w.id !== initialWallet);
       setToWalletId(secondWallet?.id || '');
 
-      setAmountInput('');
+      setAmountInput(initialPrefillData?.amount ? String(initialPrefillData.amount) : '');
       setAdminFeeInput(String(defaultAdminFee || 0));
-      setDate(getTodayDateString());
-      setNote('');
+      setDate(initialPrefillData?.date || getTodayDateString());
+      setNote(initialPrefillData?.note || '');
 
-      // Auto set first matching category
-      const firstCat = categories.find((c) => c.type === (defaultType === 'income' ? 'income' : 'expense'));
-      setCategory(firstCat ? firstCat.name : '');
+      // Auto set matching category
+      if (initialPrefillData?.category) {
+        setCategory(initialPrefillData.category);
+      } else {
+        const firstCat = categories.find((c) => c.type === (defaultType === 'income' ? 'income' : 'expense'));
+        setCategory(firstCat ? firstCat.name : '');
+      }
     }
-  }, [isOpen, defaultType, defaultSourceWalletId, wallets, categories]);
+  }, [isOpen, defaultType, defaultSourceWalletId, wallets, categories, initialPrefillData, defaultAdminFee]);
 
   // When type changes, adjust category
   const handleTypeChange = (newType: TransactionType) => {
@@ -170,9 +185,22 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
       <div className="relative w-full max-w-lg rounded-3xl bg-slate-900 border border-slate-700/80 shadow-2xl overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-200">
         {/* Header Modal */}
         <div className="flex items-center justify-between px-6 pt-5 pb-3 border-b border-slate-800">
-          <h2 className="text-lg font-bold text-white flex items-center gap-2">
-            <span>Catat Transaksi Baru</span>
-          </h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-lg font-bold text-white flex items-center gap-2">
+              <span>Catat Transaksi Baru</span>
+            </h2>
+            {onOpenReceiptScan && (
+              <button
+                type="button"
+                onClick={onOpenReceiptScan}
+                className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs font-bold transition-all"
+                title="Pindai Nota Belanja dengan AI"
+              >
+                <Camera className="w-3.5 h-3.5" />
+                <span>Foto Nota</span>
+              </button>
+            )}
+          </div>
           <button
             onClick={onClose}
             data-sound="cancel"
@@ -182,6 +210,35 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
             <X className="w-5 h-5" />
           </button>
         </div>
+
+        {/* Quick OCR Receipt Banner for Mobile & Desktop */}
+        {onOpenReceiptScan && (
+          <div className="px-6 pt-3">
+            <button
+              type="button"
+              onClick={onOpenReceiptScan}
+              className="w-full p-2.5 rounded-2xl bg-gradient-to-r from-emerald-950/40 via-slate-900 to-teal-950/30 border border-emerald-500/30 hover:border-emerald-500/60 flex items-center justify-between gap-3 text-left transition-all active:scale-[0.99] group shadow-sm"
+            >
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 group-hover:scale-105 transition-transform">
+                  <Camera className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
+                    <span>Pindai Foto Nota / Struk Belanja</span>
+                    <Sparkles className="w-3 h-3 text-amber-400" />
+                  </div>
+                  <div className="text-[11px] text-slate-400">
+                    Otomatis isi nominal, tanggal, dan nama toko dalam 1 detik
+                  </div>
+                </div>
+              </div>
+              <span className="text-[11px] font-bold text-emerald-400 px-2.5 py-1 rounded-xl bg-emerald-500/10 border border-emerald-500/20 whitespace-nowrap">
+                Scan AI
+              </span>
+            </button>
+          </div>
+        )}
 
         {/* Transaction Type Tabs */}
         <div className="px-6 pt-4">

@@ -111,3 +111,19 @@ export interface DebtRecord {
   createdAt: number;
   payments: DebtPayment[];
 }
+
+export interface ScannedReceiptItem {
+  name: string;
+  qty?: number;
+  price?: number;
+}
+
+export interface ReceiptScanResult {
+  merchantName?: string;
+  totalAmount?: number;
+  date?: string;
+  category?: string;
+  notes?: string;
+  items?: ScannedReceiptItem[];
+}
+

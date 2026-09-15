@@ -1,0 +1,42 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile and financial data sync",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["uid"]
+    },
+    "UserData": {
+      "title": "UserData",
+      "description": "User financial ledger documents",
+      "type": "object",
+      "properties": {
+        "wallets": { "type": "array" },
+        "transactions": { "type": "array" },
+        "categories": { "type": "array" },
+        "budgets": { "type": "array" },
+        "savings": { "type": "array" },
+        "debts": { "type": "array" },
+        "settings": { "type": "object" },
+        "lastSyncedAt": { "type": "number" }
+      }
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profile document"
+    },
+    "/users/{userId}/financials/main": {
+      "schema": "UserData",
+      "description": "User synced financial transactions, wallets, and preferences"
+    }
+  }
+}

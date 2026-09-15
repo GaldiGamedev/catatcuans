@@ -15,6 +15,16 @@ import { SavingsSection } from './components/SavingsSection';
 import { QuickSpendsBar } from './components/QuickSpendsBar';
 import { DebtSection } from './components/DebtSection';
 import { PinLockModal } from './components/PinLockModal';
+import { ReceiptScanModal } from './components/ReceiptScanModal';
+import { AuthModal } from './components/AuthModal';
+import {
+  auth,
+  onAuthStateChanged,
+  User,
+  loadUserCloudData,
+  saveUserCloudData,
+  testFirestoreConnection,
+} from './utils/firebase';
 import {
   Wallet,
   Transaction,
@@ -62,6 +72,19 @@ export default function App() {
   const [quickSpends, setQuickSpends] = useState<QuickSpend[]>(() => getStoredQuickSpends());
   const [debts, setDebts] = useState<DebtRecord[]>(() => getStoredDebts());
 
+  // Firebase Auth & Cloud Sync State
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [isAuthChecking, setIsAuthChecking] = useState<boolean>(true);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
+  const [isGuestMode, setIsGuestMode] = useState<boolean>(() => {
+    return localStorage.getItem('catatcuan_guest_mode') === 'true';
+  });
+  const [isCloudSyncing, setIsCloudSyncing] = useState<boolean>(false);
+  const [lastSyncedTime, setLastSyncedTime] = useState<number | null>(() => {
+    const val = localStorage.getItem('catatcuan_last_sync');
+    return val ? parseInt(val, 10) : null;
+  });
+
   // Security Lock
   const [isUnlocked, setIsUnlocked] = useState<boolean>(() => {
     const s = getStoredSettings();
@@ -82,6 +105,146 @@ export default function App() {
 
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isReceiptScanOpen, setIsReceiptScanOpen] = useState(false);
+  const [txPrefillData, setTxPrefillData] = useState<{
+    amount?: number;
+    date?: string;
+    note?: string;
+    category?: string;
+  } | undefined>(undefined);
+
+  // Initialize Firebase Auth & Sync listener
+  useEffect(() => {
+    testFirestoreConnection();
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      setCurrentUser(user);
+      setIsAuthChecking(false);
+
+      if (user) {
+        setIsGuestMode(false);
+        localStorage.removeItem('catatcuan_guest_mode');
+
+        // Update username from user profile if not customized
+        if (user.displayName) {
+          setSettings((prev) => {
+            if (prev.userName === 'Galdi' || !prev.userName) {
+              return { ...prev, userName: user.displayName! };
+            }
+            return prev;
+          });
+        }
+
+        // Fetch Cloud Data from Firestore
+        try {
+          setIsCloudSyncing(true);
+          const cloudData = await loadUserCloudData(user.uid);
+          if (cloudData) {
+            if (cloudData.wallets && cloudData.wallets.length > 0) setRawWallets(cloudData.wallets);
+            if (cloudData.transactions) setTransactions(cloudData.transactions);
+            if (cloudData.categories && cloudData.categories.length > 0) setCategories(cloudData.categories);
+            if (cloudData.budgets) setBudgets(cloudData.budgets);
+            if (cloudData.savings) setSavings(cloudData.savings);
+            if (cloudData.quickSpends) setQuickSpends(cloudData.quickSpends);
+            if (cloudData.debts) setDebts(cloudData.debts);
+            if (cloudData.settings) setSettings((prev) => ({ ...prev, ...cloudData.settings }));
+            const syncTime = cloudData.lastSyncedAt || Date.now();
+            setLastSyncedTime(syncTime);
+            localStorage.setItem('catatcuan_last_sync', syncTime.toString());
+          } else {
+            // First time this user logs in: save existing local data to Firestore
+            await saveUserCloudData(user.uid, {
+              wallets: rawWallets,
+              transactions,
+              categories,
+              budgets,
+              savings,
+              quickSpends,
+              debts,
+              settings,
+              lastSyncedAt: Date.now(),
+            });
+            const syncTime = Date.now();
+            setLastSyncedTime(syncTime);
+            localStorage.setItem('catatcuan_last_sync', syncTime.toString());
+          }
+        } catch (err) {
+          console.warn('Could not load user data from cloud:', err);
+        } finally {
+          setIsCloudSyncing(false);
+        }
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Debounced auto-save to Cloud Firestore when data changes and user is authenticated
+  useEffect(() => {
+    if (!currentUser || isAuthChecking) return;
+
+    const timer = setTimeout(async () => {
+      try {
+        setIsCloudSyncing(true);
+        await saveUserCloudData(currentUser.uid, {
+          wallets: rawWallets,
+          transactions,
+          categories,
+          budgets,
+          savings,
+          quickSpends,
+          debts,
+          settings,
+          lastSyncedAt: Date.now(),
+        });
+        const syncTime = Date.now();
+        setLastSyncedTime(syncTime);
+        localStorage.setItem('catatcuan_last_sync', syncTime.toString());
+      } catch (err) {
+        console.warn('Auto cloud sync error:', err);
+      } finally {
+        setIsCloudSyncing(false);
+      }
+    }, 1500);
+
+    return () => clearTimeout(timer);
+  }, [currentUser, rawWallets, transactions, categories, budgets, savings, quickSpends, debts, settings, isAuthChecking]);
+
+  // Manual Cloud Sync trigger
+  const handleManualSync = async () => {
+    if (!currentUser) {
+      setIsAuthModalOpen(true);
+      return;
+    }
+    try {
+      setIsCloudSyncing(true);
+      await saveUserCloudData(currentUser.uid, {
+        wallets: rawWallets,
+        transactions,
+        categories,
+        budgets,
+        savings,
+        quickSpends,
+        debts,
+        settings,
+        lastSyncedAt: Date.now(),
+      });
+      const syncTime = Date.now();
+      setLastSyncedTime(syncTime);
+      localStorage.setItem('catatcuan_last_sync', syncTime.toString());
+      showToast('Data berhasil disinkronkan ke Cloud Firestore!', 'success');
+    } catch (err: any) {
+      showToast('Gagal sinkronisasi data: ' + (err.message || 'Periksa koneksi internet'), 'error');
+    } finally {
+      setIsCloudSyncing(false);
+    }
+  };
+
+  const handleContinueAsGuest = () => {
+    setIsGuestMode(true);
+    localStorage.setItem('catatcuan_guest_mode', 'true');
+    setIsAuthModalOpen(false);
+    showToast('Masuk sebagai Tamu (Data disimpan di browser ini)', 'info');
+  };
 
   // Sync to LocalStorage
   useEffect(() => {
@@ -534,6 +697,25 @@ export default function App() {
   const handleOpenNewTransaction = (type: TransactionType = 'expense') => {
     setTxDefaultType(type);
     setTxDefaultSourceWallet(selectedWalletId || undefined);
+    setTxPrefillData(undefined);
+    setIsTxModalOpen(true);
+  };
+
+  const handleApplyReceiptScan = (data: {
+    amount: number;
+    date: string;
+    note: string;
+    category?: string;
+    merchantName?: string;
+  }) => {
+    setTxDefaultType('expense');
+    setTxPrefillData({
+      amount: data.amount,
+      date: data.date,
+      note: data.note,
+      category: data.category,
+    });
+    setIsReceiptScanOpen(false);
     setIsTxModalOpen(true);
   };
 
@@ -554,6 +736,7 @@ export default function App() {
       {/* Main Header */}
       <Header
         onOpenTransactionModal={() => handleOpenNewTransaction('expense')}
+        onOpenReceiptScan={() => setIsReceiptScanOpen(true)}
         onOpenWalletModal={() => handleOpenWalletModal()}
         onOpenCategoryModal={() => setIsCategoryModalOpen(true)}
         onOpenSettings={() => setIsSettingsOpen(true)}
@@ -569,6 +752,9 @@ export default function App() {
         budgetsCount={budgets.length}
         savingsCount={savings.length}
         debtsCount={debts.length}
+        currentUser={currentUser}
+        onOpenAuthModal={() => setIsAuthModalOpen(true)}
+        isCloudSyncing={isCloudSyncing}
       />
 
       {/* Main Content Area */}
@@ -806,7 +992,10 @@ export default function App() {
       {/* Modals */}
       <TransactionModal
         isOpen={isTxModalOpen}
-        onClose={() => setIsTxModalOpen(false)}
+        onClose={() => {
+          setIsTxModalOpen(false);
+          setTxPrefillData(undefined);
+        }}
         wallets={wallets}
         categories={categories}
         onSaveTransaction={handleSaveTransaction}
@@ -817,6 +1006,20 @@ export default function App() {
           setIsTxModalOpen(false);
           setIsCategoryModalOpen(true);
         }}
+        onOpenReceiptScan={() => {
+          setIsTxModalOpen(false);
+          setIsReceiptScanOpen(true);
+        }}
+        initialPrefillData={txPrefillData}
+      />
+
+      {/* AI Receipt Scanner Modal */}
+      <ReceiptScanModal
+        isOpen={isReceiptScanOpen}
+        onClose={() => setIsReceiptScanOpen(false)}
+        categories={categories}
+        wallets={wallets}
+        onApplyScan={handleApplyReceiptScan}
       />
 
       <WalletModal
@@ -859,6 +1062,24 @@ export default function App() {
           setIsSettingsOpen(false);
           setIsCategoryModalOpen(true);
         }}
+        currentUser={currentUser}
+        onOpenAuthModal={() => {
+          setIsSettingsOpen(false);
+          setIsAuthModalOpen(true);
+        }}
+        onManualCloudSync={handleManualSync}
+        isCloudSyncing={isCloudSyncing}
+        lastSyncedTime={lastSyncedTime}
+      />
+
+      {/* Google / Email Authentication Modal */}
+      <AuthModal
+        isOpen={isAuthModalOpen || (!isAuthChecking && !currentUser && !isGuestMode)}
+        onClose={() => setIsAuthModalOpen(false)}
+        currentUser={currentUser}
+        isGuestMode={isGuestMode}
+        onContinueAsGuest={handleContinueAsGuest}
+        canDismiss={!!currentUser || isGuestMode}
       />
     </div>
   );
